@@ -17,7 +17,7 @@ Note the RTS options to run on multicores for parallel testing.
 
 Shrinking can find buggy counterexamples in parallel testing where a
 pre-condition to dequeue fails.  I believe this is related to this
-[issue](https://github.com/stevana/quickcheck-state-machine/issues/51]).
+[issue](https://github.com/stevana/quickcheck-state-machine/issues/51).
 
 ---
 
