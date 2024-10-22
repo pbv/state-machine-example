@@ -62,11 +62,11 @@ semantics cmd = case cmd of
 
 -- | Model
 
--- | model for several queues
+-- | functional model for several queues
 newtype Model r = Model (Map (QueueRef r) QueueModel)
   deriving (Generic, Show)
 
--- | model for a single queue
+-- | fuctional model for a single queue
 data QueueModel = QueueModel { size :: Size, values :: [Elem] }
   deriving (Show, Generic)
 

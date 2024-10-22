@@ -14,12 +14,12 @@ type Queue = Ptr Void -- abstract type
 type Size = CSize
 type Elem = CInt
 
-foreign import ccall unsafe  "new" new :: Size -> IO Queue
-foreign import ccall unsafe  "delete" delete :: Queue -> IO ()
-foreign import ccall unsafe  "is_full" _is_full :: Queue -> IO Elem
-foreign import ccall unsafe  "is_empty" _is_empty :: Queue -> IO Elem
-foreign import ccall unsafe  "enqueue" enqueue :: Queue -> Elem -> IO ()
-foreign import ccall unsafe  "dequeue" dequeue :: Queue -> IO Elem
+foreign import ccall  "new" new :: Size -> IO Queue
+foreign import ccall "delete" delete :: Queue -> IO ()
+foreign import ccall "is_full" _is_full :: Queue -> IO CInt
+foreign import ccall "is_empty" _is_empty :: Queue -> IO CInt
+foreign import ccall "enqueue" enqueue :: Queue -> Elem -> IO ()
+foreign import ccall "dequeue" dequeue :: Queue -> IO Elem
 
 
 is_full, is_empty :: Queue -> IO Bool
