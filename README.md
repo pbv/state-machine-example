@@ -15,9 +15,12 @@ $ LD_LIBRARY_PATH=./lib stack run --rts-options -N
 
 Note the RTS options to run on multicores for parallel testing.
 
-Shrinking can find buggy counterexamples in parallel testing where a
-pre-condition to dequeue fails.  I believe this is related to this
-[issue](https://github.com/stevana/quickcheck-state-machine/issues/51).
+The vanilla Haskell bindings to the C implementation are not
+thread-safe, and this is detected by the parallel testing.
+
+The alternative bindings in `QueueSafeAPI.hs` enforce mutual exclusion
+using Haskell's `MVar`s and *are* thread safe.
+
 
 ---
 

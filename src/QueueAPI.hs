@@ -5,7 +5,7 @@ module QueueAPI(Queue, Size, Elem,
                new, delete,
                enqueue, dequeue,
                is_full, is_empty) where
-
+import Control.Monad (when)
 import Data.Void
 import Foreign.C
 import Foreign.Ptr
@@ -18,8 +18,18 @@ foreign import ccall  "new" new :: Size -> IO Queue
 foreign import ccall "delete" delete :: Queue -> IO ()
 foreign import ccall "is_full" _is_full :: Queue -> IO CInt
 foreign import ccall "is_empty" _is_empty :: Queue -> IO CInt
-foreign import ccall "enqueue" enqueue :: Queue -> Elem -> IO ()
-foreign import ccall "dequeue" dequeue :: Queue -> IO Elem
+foreign import ccall "enqueue" _enqueue :: Queue -> Elem -> IO ()
+foreign import ccall "dequeue" _dequeue :: Queue -> IO Elem
+
+enqueue :: Queue -> Elem -> IO ()
+enqueue q x = do
+  c <- is_full q
+  when (not c) $ _enqueue q x
+
+dequeue :: Queue -> IO Elem
+dequeue q = do
+  c <- is_empty q
+  if c then return 0 else _dequeue q
 
 
 is_full, is_empty :: Queue -> IO Bool

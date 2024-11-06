@@ -15,13 +15,12 @@ import           Test.StateMachine
 import           Test.StateMachine.TreeDiff
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
-import           Data.Map (Map, (!))
-import qualified Data.Map as Map
 import           Data.Foldable
 import           Data.Functor.Classes  (Eq1, Ord1)
 import           GHC.Generics  (Generic, Generic1)
 import           Foreign.C.Types
 import           QueueAPI
+-- import           QueueSafeAPI
 ------------------------------------------------------------------------
 
 type QueueRef = Reference (Opaque Queue) 
@@ -45,7 +44,7 @@ data Response r
   | Enqueued
   | Dequeued Elem
   | Replied Bool
-  deriving (Eq, Ord, Generic1, Rank2.Foldable)
+  deriving (Eq,  Generic1, Rank2.Foldable)
 
 deriving instance Show (Response Symbolic)
 deriving instance Show (Response Concrete)
@@ -63,8 +62,15 @@ semantics cmd = case cmd of
 -- | Model
 
 -- | functional model for several queues
-newtype Model r = Model (Map (QueueRef r) QueueModel)
+-- assoc list of references to queue models
+newtype Model r = Model [(QueueRef r, QueueModel)]
   deriving (Generic, Show)
+
+(!) :: Eq a => [(a,b)] -> a -> b
+lst ! key = case lookup key lst of
+              Just v -> v
+              Nothing -> error "invalid key"
+
 
 -- | fuctional model for a single queue
 data QueueModel = QueueModel { size :: Size, values :: [Elem] }
@@ -78,22 +84,17 @@ instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)
 
 initModel :: Model r
-initModel = Model Map.empty
+initModel = Model []
 
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition (Model model) cmd = case cmd of
   Create size -> Top
-  Delete ref -> ref `member` Map.keys model .// "Delete"
-  Enqueue ref val ->
-    let queue = model!ref
-    in (ref `member` Map.keys model .&&
-       length queue.values .< fromIntegral queue.size) .// "Enqueue"
-  Dequeue ref ->
-    let queue = model!ref
-    in (ref `member` Map.keys model .&&
-       queue.values ./= [])  .// "Dequeue"
-  IsEmpty ref -> ref `member` Map.keys model .// "IsEmpty"
-  IsFull ref -> ref `member` Map.keys model .// "IsFull"
+  Delete ref -> ref `member` map fst model .// "Delete"
+  Enqueue ref val -> ref `member` map fst model .// "Enqueue"
+  Dequeue ref -> ref `member` map fst model .// "Dequeue"
+  IsEmpty ref -> ref `member` map fst model .// "IsEmpty"
+  IsFull ref -> ref `member` map fst model .// "IsFull"
+
 
 transition :: Ord1 r => Model r -> Command r -> Response r -> Model r
 transition model cmd resp = case (cmd, resp) of
@@ -115,6 +116,7 @@ postcondition (Model m) cmd resp = case (cmd, resp) of
   (Dequeue ref, Dequeued val) ->
     let queue = m!ref
     in case queue.values of
+      [] -> Top 
       (val':_) -> val .== val' .// "Dequeue"
   (IsEmpty ref, Replied b) -> let queue = m!ref
                               in b .== isEmptyQ queue .// "IsEmpty"
@@ -132,25 +134,32 @@ isEmptyQ queue
 createQ :: Ord1 r => Size -> QueueRef r -> Model r -> Model r
 createQ size ref (Model model)
   = let queue = QueueModel { size=size, values=[] }
-    in Model (Map.insert ref queue model)
+    in Model ((ref, queue) : model)
 
 deleteQ :: Ord1 r => QueueRef r -> Model r -> Model r
-deleteQ ref (Model model) = Model (Map.delete ref model)
+deleteQ ref (Model model) = Model [(r,q) | (r,q) <- model, r /= ref]
 
 enqueueQ ref val (Model model)
-  = Model (update (model!ref))
+  = let q = model!ref 
+    in  Model (update q)
   where
-    update queue 
-        = Map.insert ref queue{values=queue.values ++ [val]} model
+    update queue
+        | length queue.values < fromIntegral queue.size =
+            (ref, queue{values=queue.values ++ [val]}) :
+            [(r,q) | (r,q)<-model, r/=ref]
+        | otherwise = model
 
 dequeueQ :: Ord1 r => QueueRef r -> Model r -> Model r
 dequeueQ ref (Model model)
-  = Model (update (model!ref))
+  = let q = model!ref 
+    in Model (update q)
   where
     update queue
       = case queue.values of
           (_:rest) -> 
-            Map.insert ref queue{values=rest} model
+            (ref, queue{values=rest}):[(r,q) | (r,q)<-model, r/=ref]
+          [] ->
+            model
 
           
 -----------------------------------------------------------------
@@ -167,7 +176,7 @@ generator (Model model)
       (1, IsFull <$> elements refs)
     ]
   where
-    refs = toList $ Map.keys model
+    refs = map fst model
 
 genCreate :: Gen (Command Symbolic)
 genCreate = Create <$> choose (1,10)
@@ -185,18 +194,22 @@ mock (Model model) cmd = case cmd of
   Create size     -> Created <$> genSym
   Delete ref      -> pure Deleted
   Enqueue ref val -> pure Enqueued
-  Dequeue ref     -> Dequeued <$> pure (head (values (model!ref)))
+  Dequeue ref     -> 
+    let first = case values (model!ref) of
+          [] -> 0
+          (v:_) -> v
+    in Dequeued <$> pure first
   IsEmpty ref     -> Replied <$> pure (null (values (model!ref)))
-  IsFull ref      ->
+  IsFull ref      ->  
     let queue = model!ref
-    in  Replied <$> pure (length queue.values == fromIntegral (queue.size))
+    in Replied <$> pure (length queue.values == fromIntegral (queue.size))
 
 
 ------------------------------------------------------------------
 -- | Cleanup
 ------------------------------------------------------------------
 cleanup :: Model Concrete -> IO ()
-cleanup (Model model) = mapM_ (delete . opaque) (Map.keys model)
+cleanup (Model model) = mapM_ (delete . opaque) (map fst model)
 
 
 -----------------------------------------------------------------
